@@ -1,0 +1,11 @@
+# Runtime state and generated secrets — NEVER committed.
+.state/
+transcripts/
+faults/fault-log.md
+
+# The fake VM is cloned here by up.sh; it carries its own keys and certs.
+openvidu-fake-vm/
+
+# The read-only Grafana token is injected at runtime into .state/mcp.env (above),
+# which the dockerised Grafana MCP reads via --env-file. No token ever lives in a
+# tracked file.

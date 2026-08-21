@@ -1,0 +1,12 @@
+{
+  "mcpServers": {
+    "grafana": {
+      "command": "docker",
+      "args": [
+        "run", "-i", "--rm", "--network", "openvidu",
+        "--env-file", "../../.state/mcp.env",
+        "grafana/mcp-grafana@sha256:f21a19cebbfa7c3a76ef1746171e5ffc3601064e432f593e7c6cb526e5216e5f", "-t", "stdio", "-disable-write"
+      ]
+    }
+  }
+}

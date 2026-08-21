@@ -1,0 +1,96 @@
+# Repro-lab scenarios = operator symptom prompt + the answer key (injected cause + expected signal).
+# The `prompt` is ALL the blind Claude session sees (plus {{WINDOW}} and {{GRAFANA_URL}} filled by
+# the runner). Everything else is the grading key — NEVER shown to the session.
+# Ordered by plane: media (F1-F4) → coordination/state (F5-F6) → ingress (F7) → egress/recording (F8-F9).
+
+scenarios:
+  - id: F1
+    title: Media blocked (UDP/ICE)
+    component: networking-ice
+    injected_cause: "iptables DROP on the WebRTC media transports (udp 50000-60000/443/7885, tcp 7881) → ICE never completes; join succeeds, no media"
+    expected_signal: "Participants climb while Packet Bytes stays flat; peer_connection failed/new states; Loki ICE failures ('Failed to ping without candidate pairs')"
+    remediation: "Unblock the media ports / fix the firewall or security group"
+    prompt: |
+      Our video calls are broken since about {{WINDOW}} — people join the room but nobody can see or hear anyone. It worked earlier today. You've got access to our Grafana at {{GRAFANA_URL}}. Can you dig in and tell me what's going on?
+
+  - id: F2
+    title: Network congestion (choppy calls)
+    component: network-quality
+    injected_cause: "tc netem packet loss + jitter on outbound UDP media (sport 50000-60000) → degraded quality, calls choppy/frozen"
+    expected_signal: "livekit_packet_loss_percent / RTT / jitter up; quality score down; participants stable (calls work, badly)"
+    remediation: "Fix the congested link / host network; not a client problem"
+    prompt: |
+      Users say calls have been choppy and freezing for the last hour or so. Here's our Grafana: {{GRAFANA_URL}}. Is the problem on our side or theirs?
+
+  - id: F3
+    title: SFU crash (all calls dropped)
+    component: core-sfu
+    injected_cause: "openvidu SFU container killed (SIGKILL) mid-load; docker restart policy brought it back → every room dropped at once, then service recovered"
+    expected_signal: "All livekit_* series drop/reset at the instant of the crash; Loki shows the SFU stop mid-line + fresh startup banner; rooms recreated after"
+    remediation: "Service already recovered; investigate why the SFU died (OOM/crash)"
+    prompt: |
+      Something happened around {{WINDOW}} and a bunch of calls dropped all at once. Things seem to have partly recovered but I'm nervous. Grafana is here: {{GRAFANA_URL}}. What happened?
+
+  - id: F4
+    title: SFU CPU starvation (undersized server)
+    component: core-sfu-resource
+    injected_cause: "openvidu (SFU) container CPU-capped via cgroup (0.4 CPUs) under heavy load → SFU can't keep up; network is fine"
+    expected_signal: "Packet loss / RTT / jitter climb and quality collapses under load across ALL streams; no network fault; symptoms track load, not path"
+    remediation: "Give the SFU more CPU / scale the instance; not a network problem"
+    prompt: |
+      Since about {{WINDOW}}, when meetings get busy the video starts stuttering and freezing for everyone at once, and it gets better when people leave. Grafana: {{GRAFANA_URL}}. Is our server too small, or is something broken?
+
+  - id: F5
+    title: Redis down (coordination plane)
+    component: redis
+    injected_cause: "Redis stopped → coordination plane down; no new rooms/egress; services flood 'connection refused' on the redis port"
+    expected_signal: "Loki: every service logs connection refused against the redis address; SFU metrics freeze; no new rooms"
+    remediation: "Start Redis again; check why it died"
+    prompt: |
+      After a brief blip, no new rooms or recordings will start at all — existing stuff is limping. Here's Grafana: {{GRAFANA_URL}}. What's broken?
+
+  - id: F6
+    title: Mongo down (stateful ops fail, calls fine)
+    component: mongo
+    injected_cause: "MongoDB stopped → stateful operations (Meet rooms/config, dashboard, analytics) fail while media keeps flowing"
+    expected_signal: "Calls/metrics look healthy; Loki shows mongo connection errors from meet/dashboard/openvidu services; mongo container silent"
+    remediation: "Start MongoDB again; check why it died"
+    prompt: |
+      Media calls still work, but anything that saves state — creating rooms from the dashboard, config changes — is failing since {{WINDOW}}. Grafana: {{GRAFANA_URL}}. What's going on in the backend?
+
+  - id: F7
+    title: Ingress RTMP failure (bad stream key)
+    component: ingress
+    injected_cause: "External ffmpeg publishes RTMP with a WRONG stream key; ingress rejects it ('ingress does not exist'); room stays empty"
+    expected_signal: "No ingress metrics; Loki {container=\"ingress\"} rejection with the bad streamKey visible"
+    remediation: "Client-side: fix the stream key in the encoder; server pipeline is fine"
+    prompt: |
+      We're trying to bring an RTMP stream into a room and it just won't come through — the room stays empty. Grafana: {{GRAFANA_URL}}. Can you see why the ingest is failing?
+
+  - id: F8
+    title: Recordings broken mid-way (egress OOM)
+    component: egress-resource
+    injected_cause: "egress container memory-capped (512m); the composite recorder (headless Chrome+GStreamer) is OOM-killed mid-recording → broken/half recordings"
+    expected_signal: "No egress metrics; Loki {container=\"egress\"} shows the recording aborting / handler dying ('signal: killed'); recordings end abruptly"
+    remediation: "Give egress more memory / lower concurrent recordings; check for OOM kills"
+    prompt: |
+      Some of our recordings come out broken or half-finished, and it started when we ran a bunch of them at once. Grafana: {{GRAFANA_URL}}. Any idea what's failing?
+
+  - id: F9
+    title: Recordings refused (CPU exhausted)
+    component: egress-resource
+    injected_cause: "egress.yaml room_composite_cpu_cost set to an impossible value (100 > node CPUs) → egress admission control refuses every room-composite recording as if the CPU were exhausted (reproduces https://openvidu.io/latest/docs/troubleshooting/recording/#cpu-exhausted without loading the host). Calls unaffected."
+    expected_signal: "No egress metrics; Loki {container=\"egress\"} logs the documented signature: 'not enough cpu for some egress types' (minimumCpu 100, available 16) and 'can not accept request' with reason:cpu / error:'not enough CPU'. openvidu logs 'StartEgress ... request canceled'. Media is fine. NOTE: the honest answer is 'bad config value', not 'add CPU' — required 100 vs available 16 is nonsensical."
+    remediation: "Fix the egress cpu_cost thresholds (room_composite_cpu_cost back to ~2-3) in egress.yaml — do NOT add hardware"
+    prompt: |
+      Our recordings stopped working since about {{WINDOW}} — the calls themselves are totally fine, but nothing gets recorded anymore. Can you dig into Grafana ({{GRAFANA_URL}}) and tell me why the recordings won't start?
+
+  # Negative control (no server-side fault — correct answer is "nothing wrong on the backend")
+  - id: N1
+    title: Healthy cluster (negative control)
+    component: none
+    injected_cause: "NONE — system healthy under normal load"
+    expected_signal: "All metrics nominal; no error patterns"
+    remediation: "No action; not a server-side problem"
+    prompt: |
+      A couple of users complained about call quality around {{WINDOW}}. Can you check our Grafana ({{GRAFANA_URL}}) and tell me if there's anything wrong on our servers?
