@@ -1,8 +1,8 @@
 # OpenVidu and Grafana MCP debugging lab
 
-This repo contains an OpenVidu Single Node locally with a Grafana MCP set up, with a few realistic faults injected into it so you can practice debugging OpenVidu issues using only the Grafana MCP interface. It is the reproducible companion to the blog post: [TODO: link to the blog post.]()
+This repo stands up a local OpenVidu Single Node deployment wired to a read-only Grafana MCP, with a few realistic faults you can inject to practice debugging OpenVidu using only what Grafana shows. It is the reproducible companion to an openvidu.io blog post — link coming soon. <!-- TODO: add blog URL once published -->
 
-The lab is designed to be run on a Linux host with Docker, and it can be used to practice debugging OpenVidu issues using only the Grafana MCP interface.
+The lab runs on a Linux host with Docker.
 
 It stands up a real OpenVidu deployment with its full
 observability stack, breaks it in realistic ways one command at a time, and hands the
@@ -52,7 +52,7 @@ the operator's complaint, ready to paste:
 ./scenario.sh F1       # inject + live load + the prompt to hand Claude
 ```
 
-Now play the on-call engineer's AI. Point Claude Code at the read-only Grafana and give it
+Now play the on-call engineer. Point Claude Code at the read-only Grafana and give it
 the line the script printed:
 
 ```bash
@@ -82,7 +82,7 @@ runner/run-both-arms.sh F1 1 "$(date +%H:%M) today"
 | Command | Scenario | Signal character |
 |---|---|---|
 | `./scenario.sh F1` | firewall eats the WebRTC media ports; joins work, no media | loud (metrics + logs) |
-| `./scenario.sh F2` | packet loss + jitter on outbound media (tc netem) | loud (dashboard) |
+| `./scenario.sh F2` | packet loss + jitter on outbound media (tc netem) | loud (metric) |
 | `./scenario.sh F3` | SFU SIGKILLed mid-load, auto-restarts | logs + metric reset |
 | `./scenario.sh F4` | SFU CPU-capped; chokes under load (looks like congestion — is it?) | resource, confusable |
 | `./scenario.sh F5` | Redis down (coordination plane) | loud but confusable |
@@ -92,7 +92,8 @@ runner/run-both-arms.sh F1 1 "$(date +%H:%M) today"
 | `./scenario.sh F9` | egress refuses recordings — "CPU exhausted" (config-induced) | logs-only, explicit |
 | `./scenario.sh N1` | healthy cluster (negative control) | nothing wrong |
 
-Every injection logs ground truth (timestamp + cause) to `faults/fault-log.md`.
+The blog post walks through five of these: `F1`, `F2`, `F5`, `F7`, and `F9`. Every injection logs
+ground truth (timestamp + cause) to `faults/fault-log.md`.
 
 The resource faults each break things a different way and teach a different lesson. **F4** and **F8**
 strangle a service's CPU/memory with `docker update` while everything else stays healthy. **F9**
